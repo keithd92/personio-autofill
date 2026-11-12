@@ -1,0 +1,9 @@
+[project]
+name = "personio-autofill"
+version = "0.1.0"
+description = "Fill in Personio attendance through a real browser session"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "playwright>=1.65.0",
+]

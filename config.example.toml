@@ -1,0 +1,24 @@
+# Copy this file to config.toml and set your usual day, per weekday.
+# Days not listed (weekends) are never filled. Times are HH:MM.
+# The work span minus breaks must equal your Personio target for that day,
+# otherwise the script skips the day (this also catches half-day absences).
+
+[days.mon]
+work = ["09:00", "18:00"]
+breaks = [["13:00", "13:30"]]
+
+[days.tue]
+work = ["09:00", "18:00"]
+breaks = [["13:00", "13:30"]]
+
+[days.wed]
+work = ["09:00", "18:00"]
+breaks = [["13:00", "13:30"]]
+
+[days.thu]
+work = ["09:00", "18:00"]
+breaks = [["13:00", "13:30"]]
+
+[days.fri]
+work = ["09:00", "15:00"]
+breaks = []

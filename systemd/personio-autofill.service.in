@@ -1,0 +1,15 @@
+[Unit]
+Description=Fill today's Personio attendance
+# Started at desktop login (see [Install]) and by personio-autofill.timer.
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@DIR@
+# --once: after the first real outcome today (logged, holiday, mismatch...) later
+# triggers exit straight away without opening a browser.
+ExecStart=@UV@ run fill.py --submit --once
+TimeoutStartSec=15min
+
+[Install]
+WantedBy=graphical-session.target

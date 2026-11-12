@@ -1,0 +1,12 @@
+[Unit]
+Description=Catch-up for Personio attendance after the laptop wakes up
+
+# Opening the lid resumes the session rather than logging in, so the login trigger
+# doesn't fire. This re-checks every 30 minutes on weekdays; once today is handled
+# each run exits immediately.
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08..20:00/30
+Persistent=false
+
+[Install]
+WantedBy=timers.target
