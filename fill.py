@@ -16,6 +16,8 @@ It skips the day (and says why) when:
 
 import argparse
 import datetime as dt
+import os
+import time
 import re
 import shutil
 import subprocess
@@ -26,10 +28,15 @@ from pathlib import Path
 from playwright.sync_api import Locator, Page, sync_playwright
 
 from common import ROOT, base_url, open_context
+from login import interactive_login, personio_app
 
 DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 SHOTS = ROOT / "dumps"
 STATE = ROOT / "state"
+LAST_VISIT = STATE / "last-visit"
+# Personio signs you out after a while without visits. Visiting this often while
+# the laptop is on keeps the session alive (weekends included).
+KEEPALIVE_HOURS = 3
 TARGET_RE = re.compile(r"(\d+h(?:\s*\d+m)?)\s*/\s*(\d+h(?:\s*\d+m)?)")
 
 
@@ -148,6 +155,69 @@ def label(widget: Locator) -> tuple[int, int | None]:
     return (parse_duration(tracked) if tracked.strip() else 0), (parse_duration(target) if target.strip() else None)
 
 
+def logged_in(page: Page) -> bool:
+    """Signed in = the page ended up on your company's Personio app."""
+    return personio_app(page.url) == base_url()
+
+
+def open_home(pw, headless: bool):
+    ctx = open_context(pw, headless=headless)
+    page = ctx.new_page()
+    goto(page, base_url() + "/")
+    return ctx, page
+
+
+def ensure_session(pw, args: argparse.Namespace, today: dt.date):
+    """Open the Personio home page signed in, or return (None, None).
+
+    If the session has expired and this is an automatic run with a desktop to
+    show it on, open the sign-in window once a day; once you've signed in, carry on.
+    Otherwise notify once a day.
+    """
+    ctx, page = open_home(pw, headless=not args.headed)
+    if logged_in(page):
+        STATE.mkdir(exist_ok=True)
+        LAST_VISIT.touch()
+        return ctx, page
+    ctx.close()
+
+    prompted = STATE / f"{today}.login-prompted"
+    has_desktop = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    STATE.mkdir(exist_ok=True)
+    if args.once and has_desktop and not prompted.exists():
+        prompted.touch()
+        notify("Your Personio sign-in expired. Sign in in the window that just opened; "
+               "it closes by itself and today's hours get logged.")
+        if interactive_login(pw, close_when_done=True):
+            ctx, page = open_home(pw, headless=not args.headed)
+            if logged_in(page):
+                LAST_VISIT.touch()
+                return ctx, page
+            ctx.close()
+
+    msg = f"Personio session expired. Run `uv run login.py` in {ROOT}."
+    nagged = STATE / f"{today}.login-notified"
+    if not nagged.exists():
+        nagged.touch()
+        notify(msg)
+    else:
+        print(msg)
+    return None, None
+
+
+def keepalive(args: argparse.Namespace, today: dt.date) -> None:
+    """On runs that don't otherwise open Personio, refresh the session now and then."""
+    if not args.once:
+        return
+    if LAST_VISIT.exists() and time.time() - LAST_VISIT.stat().st_mtime < KEEPALIVE_HOURS * 3600:
+        return
+    with sync_playwright() as pw:
+        ctx, _ = ensure_session(pw, args, today)
+        if ctx:
+            print(f"{today}: refreshed the Personio session.")
+            ctx.close()
+
+
 def fmt(mins: int | None) -> str:
     return "none" if mins is None else f"{mins // 60}h {mins % 60:02d}m"
 
@@ -155,7 +225,6 @@ def fmt(mins: int | None) -> str:
 def run(args: argparse.Namespace) -> int:
     today = dt.date.today()
     done_file = STATE / f"{today}.done"
-    login_nagged = STATE / f"{today}.login-notified"
 
     def finish(code: int, msg: str, alert: bool = False) -> int:
         """A final outcome for today: record it so --once runs don't repeat it."""
@@ -167,6 +236,7 @@ def run(args: argparse.Namespace) -> int:
 
     if args.once and done_file.exists():
         print(f"{today}: already handled today ({done_file.read_text().strip()})")
+        keepalive(args, today)
         return 0
 
     config = Path(args.config)
@@ -177,6 +247,7 @@ def run(args: argparse.Namespace) -> int:
     day = cfg.get("days", {}).get(DAYS[today.weekday()])
     if not day:
         print(f"{today}: no hours configured for {DAYS[today.weekday()]}, nothing to do.")
+        keepalive(args, today)
         return 0
 
     work_start, work_end = day["work"]
@@ -185,18 +256,8 @@ def run(args: argparse.Namespace) -> int:
 
     with sync_playwright() as pw:
         pw.selectors.set_test_id_attribute("data-test-id")
-        ctx = open_context(pw, headless=not args.headed)
-        page = ctx.new_page()
-        goto(page, base_url() + "/")
-
-        if "login." in page.url:
-            msg = f"Personio session expired. Run `uv run login.py` in {ROOT}."
-            if not login_nagged.exists():
-                notify(msg)
-                STATE.mkdir(exist_ok=True)
-                login_nagged.touch()
-            else:
-                print(msg)
+        ctx, page = ensure_session(pw, args, today)
+        if ctx is None:
             return 2
 
         lang = page.evaluate("document.documentElement.dataset.languagePreference || document.documentElement.lang")

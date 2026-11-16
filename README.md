@@ -98,7 +98,7 @@ You'll see one of:
 | Half day off | Your hours don't match Personio's reduced target, so nothing is logged and you get a notification. Log that day by hand. |
 | You already logged today | It leaves your entry alone. |
 | A different day than usual | Fix the entry in Personio after it logs. It won't overwrite it. |
-| Personio sign-in expired | You get a notification. Run `uv run login.py` in this folder and sign in again. |
+| Personio sign-in expired | The sign-in window opens by itself (once a day). Sign in; it closes on its own and the day gets logged. If you close it instead, you get a notification: run `uv run login.py` in this folder. |
 | Something else breaks | You get one notification a day, and it keeps retrying. Look at the `journalctl` output above. |
 
 Once today's outcome is settled, later runs that day exit straight away without
@@ -133,9 +133,15 @@ Personio only lets you log today (future days are locked), so it can't catch up 
 missed day. If the laptop stays shut all day, log that day by hand.
 
 **Triggers:** a systemd user service starts at desktop login. A timer runs it every
-30 minutes, 08:00–20:30 on weekdays, because opening the lid isn't a login. Both are
+30 minutes, 08:00–20:30 every day, because opening the lid isn't a login. Both are
 set up by `install.sh` and point at this folder, so if you move the folder, run
 `./install.sh` again.
+
+**Staying signed in:** Personio signs you out after some time without visits. On
+runs that don't need to log anything (already done today, weekends), the script
+still opens your Personio home page if it hasn't for 3 hours. That keeps the session
+alive while the laptop is on. If the laptop has been off long enough for the session
+to expire anyway, the next run opens the sign-in window for you.
 
 **One Personio quirk:** the card crashes if a break time briefly passes through an
 invalid value (typing "13" goes through "01" first). So the script changes times

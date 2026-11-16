@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Browser profile (holds your Personio session cookies)
+.profile/
+# Exploration dumps
+dumps/
+state/
+config.toml

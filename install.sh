@@ -61,8 +61,9 @@ step "Dry run for today (fills the form, does not submit)"
 command -v systemctl >/dev/null || die "systemctl not found; run fill.py by hand instead."
 
 step "Automatic logging"
-echo "This logs today's hours at desktop login, and every 30 minutes on weekdays"
-echo "(08:00-20:30) after the laptop wakes up, at most once a day."
+echo "This logs today's hours at desktop login, or within 30 minutes of the laptop"
+echo "waking up (08:00-20:30), at most once a day. It also visits Personio every few"
+echo "hours while the laptop is on, so your sign-in doesn't expire."
 read -r -p "Turn it on? [y/N] " answer
 if [[ ! "$answer" =~ ^[Yy] ]]; then
   echo "Left off. Run ./install.sh again whenever you want it."
