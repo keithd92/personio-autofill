@@ -50,7 +50,7 @@ def interactive_login(pw: Playwright, close_when_done: bool, timeout_s: int = 60
         page.goto(start_url())
         if close_when_done:
             page.wait_for_url(lambda url: personio_app(url) is not None, timeout=timeout_s * 1000)
-            page.wait_for_load_state("networkidle")
+            page.wait_for_load_state("load")
             seen = personio_app(page.url)
         else:
             def remember(frame):

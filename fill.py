@@ -26,6 +26,7 @@ import tomllib
 from pathlib import Path
 
 from playwright.sync_api import Locator, Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from common import ROOT, base_url, open_context
 from login import interactive_login, personio_app
@@ -64,16 +65,32 @@ def notify(msg: str) -> None:
         subprocess.run(["notify-send", "Personio attendance", msg], check=False)
 
 
+class LoadError(RuntimeError):
+    """Personio didn't load at all (network down, Personio slow): not a sign-in problem."""
+
+
+def settle(page: Page, timeout_ms: int = 10_000) -> None:
+    """Give background requests a moment to finish, but don't fail if they never do.
+
+    Personio sometimes keeps a connection open, so the network never goes quiet;
+    the steps after this wait for the exact elements they need anyway.
+    """
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout_ms)
+    except PlaywrightTimeout:
+        pass
+
+
 def goto(page: Page, url: str, attempts: int = 10) -> None:
     """At login the network may not be up yet, so keep trying for ~5 minutes."""
     for i in range(attempts):
         try:
-            page.goto(url)
-            page.wait_for_load_state("networkidle")
+            page.goto(url)  # waits for the page's load event
+            settle(page)
             return
         except Exception as e:  # noqa: BLE001 - any network/navigation failure
             if i == attempts - 1:
-                raise
+                raise LoadError(f"couldn't load Personio ({type(e).__name__}: {e})") from e
             print(f"couldn't load {url} ({type(e).__name__}), retrying in 30s")
             page.wait_for_timeout(30_000)
 
@@ -314,7 +331,7 @@ def run(args: argparse.Namespace) -> int:
             return 0
 
         button.click()
-        page.wait_for_load_state("networkidle")
+        settle(page)
         goto(page, base_url() + "/")
         page.get_by_test_id("manual-tracking-widget").wait_for(timeout=15000)
         after, _ = label(page.get_by_test_id("manual-tracking-widget"))
@@ -339,7 +356,11 @@ def main() -> int:
         # Unexpected failure (Personio changed its page, network down for 5 min...).
         # Nothing is marked done, so the timer tries again; notify only once a day.
         flag = STATE / f"{dt.date.today()}.error-notified"
-        msg = f"Personio attendance script failed: {type(e).__name__}: {e}"
+        if isinstance(e, LoadError):
+            msg = ("Personio didn't load for ~5 minutes (network down or Personio slow). "
+                   "Not a sign-in problem: it tries again on the next run.")
+        else:
+            msg = f"Personio attendance script failed: {type(e).__name__}: {e}"
         if args.once and not flag.exists():
             STATE.mkdir(exist_ok=True)
             flag.touch()
